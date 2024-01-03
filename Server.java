@@ -1,6 +1,5 @@
 
 
-
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -13,6 +12,7 @@ public class Server {
     private int ackCounter = 0;
     private ArrayList<String> fileNames = new ArrayList<>();
     private ArrayList<Integer> clients = new ArrayList<>();
+
 
     public Server() throws SocketException {
         this.port = 6666;
