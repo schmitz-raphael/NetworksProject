@@ -11,7 +11,7 @@ public class Server {
     private String fileName = "";
     private ArrayList<Integer> clients = new ArrayList<>();
 
-    private byte[] lastPacketSent;
+    private DatagramPacket lastPacketSent;
 
     private static int packetSize = 8192;
 
@@ -84,8 +84,9 @@ public class Server {
     }
 
     public void sendPacket(byte[] data, int length, int clientPort) throws IOException {
-        if (Math.random() > 0.00){
+        if (Math.random() > 0.05){
             DatagramPacket packet = new DatagramPacket(data, length, InetAddress.getLocalHost(), clientPort);
+            lastPacketSent = packet;
             socket.send(packet);
             System.out.println("Server: Packet " + ackCounter + " sent");
         }
@@ -102,7 +103,7 @@ public class Server {
     }
 
     private void waitForAck() throws IOException {
-        socket.setSoTimeout(10000);
+        socket.setSoTimeout(5);
         while (true){
             try{
                 byte[] ackData = new byte[packetSize];
@@ -115,11 +116,22 @@ public class Server {
                 }
             }
             catch (SocketTimeoutException e){
-                System.out.println("HelloWorld");
+                timeout();
+                break;
             }
         }
     }
-
+    private void timeout(){
+        for (int client: clients){
+            try {
+                sendPacket(lastPacketSent.getData(), lastPacketSent.getLength(), client);
+                waitForAck();
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+    }
     public static void main(String[] args) {
         try{
             Server server = new Server();

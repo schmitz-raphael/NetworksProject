@@ -12,6 +12,7 @@ public class Client extends Thread{
     private int id;
 
     private static int packetSize = 8192;
+    private static double probability = 0.00;
 
     public Client(InetSocketAddress serverAddress, String filename, int id) throws SocketException {
         this.socket = new DatagramSocket();
@@ -48,8 +49,8 @@ public class Client extends Thread{
                     break; // End of file transfer
                 }
                 byte[] data = receivePacket.getData();
-                System.out.println("data[0]=" +(int) (data[0]));
-                if (ByteBuffer.wrap(data).getInt(0)== (packetsReceived%256)){
+                System.out.println("data[0]=" +ByteBuffer.wrap(data).getInt(0));
+                if (ByteBuffer.wrap(data).getInt(0)== packetsReceived){
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
                     System.out.println(id+":Packet " + packetsReceived + " received.");
                     packetsReceived++;
@@ -67,7 +68,7 @@ public class Client extends Thread{
     }
 
     private void sendPacket(byte[] data) throws IOException {
-        if (Math.random() > 0.00){
+        if (Math.random() > probability){
             DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
             socket.send(packet);
         }
