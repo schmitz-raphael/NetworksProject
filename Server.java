@@ -13,7 +13,7 @@ public class Server {
 
     private DatagramPacket lastPacketSent;
 
-    private static int packetSize = 8192;
+    private static int packetSize = 32768;
 
     public Server() throws SocketException {
         this.port = 6666;
@@ -37,7 +37,7 @@ public class Server {
     }
 
     private void waitForJoin() throws IOException {
-        while (clients.size() < 10) {
+        while (clients.size() < 2) {
             DatagramPacket joinPacket = receivePacket();
             String joinMessage = new String(joinPacket.getData(), 0, joinPacket.getLength());
             if (joinPacket.getLength() > 0 && joinMessage.split(" ")[0].equals("JOIN")) {
@@ -103,7 +103,7 @@ public class Server {
     }
 
     private void waitForAck() throws IOException {
-        socket.setSoTimeout(5);
+        socket.setSoTimeout(50);
         while (true){
             try{
                 byte[] ackData = new byte[packetSize];

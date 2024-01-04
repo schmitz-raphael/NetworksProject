@@ -11,7 +11,7 @@ public class Client extends Thread{
     private int packetsReceived = 0;
     private int id;
 
-    private static int packetSize = 8192;
+    private static int packetSize = 32768;
     private static double probability = 0.00;
 
     public Client(InetSocketAddress serverAddress, String filename, int id) throws SocketException {
