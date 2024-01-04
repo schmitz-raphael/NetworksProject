@@ -2,6 +2,7 @@ import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.*;
+import java.nio.ByteBuffer;
 import java.util.*;
 public class Server {
     private DatagramSocket socket;
@@ -43,8 +44,7 @@ public class Server {
                 System.out.println("Server: Client joined: " + joinPacket.getAddress() + ":" + joinPacket.getPort());
                 fileName = joinMessage.split(" ")[1];
                 clients.add(joinPacket.getPort());
-                sendAck(joinPacket.getAddress(), joinPacket.getPort());
-                
+                sendAck(joinPacket.getAddress(), joinPacket.getPort());    
             }
         }
     }
@@ -55,9 +55,11 @@ public class Server {
             byte[] buffer = new byte[packetSize];
             int bytesRead;
 
-            while ((bytesRead = fileInputStream.read(buffer)) != -1) {
+            while ((bytesRead = fileInputStream.read(buffer, 4, packetSize-4)) != -1) {
+                System.out.println("ACK:" + ackCounter);
+                ByteBuffer.wrap(buffer).putInt(0, ackCounter);
                 for (int i = 0; i < clients.size(); i++){
-                    sendPacket(buffer, bytesRead, clients.get(i));
+                    sendPacket(buffer, bytesRead+4, clients.get(i));
                     waitForAck();
                 }
                 ackCounter++;
@@ -85,7 +87,7 @@ public class Server {
         if (Math.random() > 0.00){
             DatagramPacket packet = new DatagramPacket(data, length, InetAddress.getLocalHost(), clientPort);
             socket.send(packet);
-            System.out.println("Server: Packet sent");
+            System.out.println("Server: Packet " + ackCounter + " sent");
         }
         else{
             System.out.println("Server: Packet lost");
