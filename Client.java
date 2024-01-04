@@ -49,7 +49,6 @@ public class Client extends Thread{
                     break; // End of file transfer
                 }
                 byte[] data = receivePacket.getData();
-                System.out.println("data[0]=" +ByteBuffer.wrap(data).getInt(0));
                 if (ByteBuffer.wrap(data).getInt(0)== packetsReceived){
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
                     System.out.println(id+":Packet " + packetsReceived + " received.");
