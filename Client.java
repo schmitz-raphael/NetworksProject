@@ -3,7 +3,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
-
 public class Client extends Thread{
     private DatagramSocket socket;
     private InetSocketAddress serverAddress;
@@ -12,13 +11,17 @@ public class Client extends Thread{
     private int id;
 
     private static int packetSize = 32768;
-    private static double probability = 0.00;
+    private double probability;
 
-    public Client(InetSocketAddress serverAddress, String filename, int id) throws SocketException {
+    private byte[] lastPacketSent;
+
+    public Client(InetSocketAddress serverAddress, String filename, int id, double probability) throws SocketException {
         this.socket = new DatagramSocket();
         this.serverAddress = serverAddress;
         this.filename = filename;
         this.id = id;
+        this.probability = probability;
+        
     }
 
     public void requestJoin() {
@@ -33,61 +36,79 @@ public class Client extends Thread{
     }
     public void waitForAck(){
         while (true){
-            DatagramPacket ackPacket = receivePacket();
-            if (ackPacket.getLength() > 0 && new String(ackPacket.getData()).trim().equals("ACK")) {
-                System.out.println(id+":Acknowledgment received.");
+            DatagramPacket ackPacket;
+            try {
+                ackPacket = receivePacket();
+                if (ackPacket.getLength() > 0 && new String(ackPacket.getData()).trim().equals("ACK")) {
                 break;
+                }
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
             }
         }
     }
     public void receiveFile() {
-        try (BufferedOutputStream fileOutputStream = new BufferedOutputStream(new FileOutputStream(id +"_incoming_" + filename))) {
+        lastPacketSent = "".getBytes();
+        System.out.println("Server: Starting file download");
+        double startTime = System.currentTimeMillis();
+        try (BufferedOutputStream fileOutputStream = new BufferedOutputStream(new FileOutputStream(+id +"_received_" + filename))) {
             while (true) {
                 DatagramPacket receivePacket = receivePacket();
-
+                
                 if (receivePacket.getLength() == 0 || isEndOfFilePacket(receivePacket)) {
                     break; // End of file transfer
                 }
                 byte[] data = receivePacket.getData();
-                if (ByteBuffer.wrap(data).getInt(0)== packetsReceived){
+                System.out.println(id + ": received Packet" + packetsReceived + " ("+ ByteBuffer.wrap(data).getInt(0) + ")");
+                int packetNumber = ByteBuffer.wrap(data).getInt(0);
+                if (packetNumber == packetsReceived){
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
-                    System.out.println(id+":Packet " + packetsReceived + " received.");
+                    sendAck();
                     packetsReceived++;
                 }
+                else if (ByteBuffer.wrap(data).getInt(0)< packetsReceived){
+                    packetsReceived = packetNumber;
+                    sendAck();
+                }
 
-                // Send acknowledgment
-                System.out.println(id+": Total packets: " + packetsReceived);
-                sendAck();
+    
             }
             fileOutputStream.close();
-            System.out.println(id+":File transfer complete.");
+            System.out.println("Client"+id+": File transfer complete.");
+            System.out.println("Client"+id+"Elapsed time: "+ (System.currentTimeMillis()-startTime)/1000+ "s");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private void sendPacket(byte[] data) throws IOException {
+        lastPacketSent = data;
         if (Math.random() > probability){
             DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
             socket.send(packet);
         }
-        else System.out.println(id+":Packet lost");
+        else{
+            System.out.println(id + ": PACKET LOST");
+        }
     }
 
-    private DatagramPacket receivePacket() {
+    private DatagramPacket receivePacket() throws IOException{
+        socket.setSoTimeout(2000);
         try {
             byte[] receiveData = new byte[packetSize];
             DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
             socket.receive(receivePacket);
             return receivePacket;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
+        } catch (SocketTimeoutException e){
+            sendPacket(lastPacketSent);
+            return receivePacket();
         }
     }
 
     private void sendAck() throws IOException {
-        String ackMessage = "ACK " + (packetsReceived-1);
+        String ackMessage = "ACK " + (packetsReceived);
+        System.out.println(id + "sent : "+ackMessage);
         sendPacket(ackMessage.getBytes());
     }
     private boolean isEndOfFilePacket(DatagramPacket packet) {
@@ -101,15 +122,16 @@ public class Client extends Thread{
     }
     public static void main(String[] args) {
         try {
+            String filename = "smallTestFile";
+            int n = 10;
+            double probability = 0.00;
 
-            String filename = args[0];
-            int n = Integer.parseInt(args[1]);
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
 
             Client[] clients = new Client[n];
 
             for (int i = 0; i < n; i++){
-                clients[i] = new Client(serverAddress, filename, i);
+                clients[i] = new Client(serverAddress, filename, i, probability);
                 clients[i].start();
             }
             for (Client client : clients){

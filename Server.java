@@ -3,15 +3,20 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 public class Server {
     private DatagramSocket socket;
     private int port;
-    private int ackCounter = 0;
     private String fileName = "";
     private ArrayList<Integer> clients = new ArrayList<>();
 
-    private DatagramPacket lastPacketSent;
+    private int base;
+    private int nextSeq;
+    private int window;
 
     private static int packetSize = 32768;
 
@@ -29,69 +34,108 @@ public class Server {
 
             // Send the file to the client
             sendFile();
-
-            System.out.println("Server: File transfer complete.");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private void waitForJoin() throws IOException {
-        while (clients.size() < 2) {
+        while (clients.size() < 10) {
             DatagramPacket joinPacket = receivePacket();
             String joinMessage = new String(joinPacket.getData(), 0, joinPacket.getLength());
             if (joinPacket.getLength() > 0 && joinMessage.split(" ")[0].equals("JOIN")) {
                 System.out.println("Server: Client joined: " + joinPacket.getAddress() + ":" + joinPacket.getPort());
                 fileName = joinMessage.split(" ")[1];
                 clients.add(joinPacket.getPort());
-                sendAck(joinPacket.getAddress(), joinPacket.getPort());    
+                sendAck(joinPacket.getAddress(), joinPacket.getPort());
             }
         }
+    }
+
+    public void sendFile() throws IOException {
+        System.out.println("Server: Starting file upload");
+        double startTime = System.currentTimeMillis();
+        base = 0;
+        nextSeq = 0;
+        int windowSize = 10; // Choose an appropriate window size
+        
+        byte[] nextPacket = createPacket(nextSeq);
+        //as long as the nextPacket is not empty ie. while there's a package to send
+        while (nextPacket != null){
+            //while nextSeq is smaller than the base + windowsize
+            while (nextSeq < base + windowSize){
+                //loop through the client and send the packet
+                for (int clientPort : clients) {
+                    sendPacket(nextPacket, nextPacket.length, clientPort);
+                    try{
+                        Thread.sleep(1);
+                    }
+                    catch (InterruptedException e){
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                System.out.println("PACKET_" + nextSeq + " sent");
+                //get the next packet
+                nextPacket = createPacket(++nextSeq);
+                if (nextPacket == null){
+                    break;
+                }
+            }
+            //get the acknowledgements from every client
+            waitForAck();
+            //iterate base after receiving all acks
+        }
+        // Signal end of file transfer
+        for (int client : clients) {
+            byte[] endOfFileMessage = "END_OF_FILE".getBytes();
+            DatagramPacket endOfFilePacket = new DatagramPacket(endOfFileMessage, endOfFileMessage.length, InetAddress.getLocalHost(), client);
+            socket.send(endOfFilePacket);
+        }
+        System.out.println("Server: File transfer complete.");
+        System.out.println("Elapsed time: " + (System.currentTimeMillis() - startTime) / 1000 + "s");
     }
     
-    public void sendFile() throws IOException {
-        ackCounter = 0;
+    /*
+     * This method is used to get the package of certain number n
+     */
+    public byte[] createPacket(int n) throws IOException{
         try (BufferedInputStream fileInputStream = new BufferedInputStream(new FileInputStream(fileName))) {
-            byte[] buffer = new byte[packetSize];
-            int bytesRead;
+            System.out.println(n);
+            byte[] buffer = new byte[packetSize - 4]; // Deduct 4 bytes for the base index in the packet
+            int bytesRead = 0;
 
-            while ((bytesRead = fileInputStream.read(buffer, 4, packetSize-4)) != -1) {
-                System.out.println("ACK:" + ackCounter);
-                ByteBuffer.wrap(buffer).putInt(0, ackCounter);
-                for (int i = 0; i < clients.size(); i++){
-                    sendPacket(buffer, bytesRead+4, clients.get(i));
-                    waitForAck();
-                }
-                ackCounter++;
+    
+            for (int i = 0; i < n; i++){
+                bytesRead= fileInputStream.read(buffer);
             }
 
-            // Signal end of file transfer
-            for (int i = 0; i < clients.size(); i++){
-                byte[] endOfFileMessage = "END_OF_FILE".getBytes();
-                DatagramPacket endOfFilePacket = new DatagramPacket(endOfFileMessage, endOfFileMessage.length, InetAddress.getLocalHost(), clients.get(i));
-                socket.send(endOfFilePacket);
+            bytesRead= fileInputStream.read(buffer);
+            if (bytesRead == -1) return null;
+            else{
+                byte[] packet = new byte[bytesRead+4];
+                ByteBuffer.wrap(packet).putInt(0, n);
+                System.arraycopy(buffer, 0, packet, 4, bytesRead);
+                return packet;
             }
         }
-    }
-
+    } 
+    /*
+     * This method is used to send Acks
+     */
     public void sendAck(InetAddress address, int clientPort) throws IOException {
-        sendPacket("ACK".getBytes(), address, clientPort);
-    }
-
-    private void sendPacket(byte[] data, InetAddress address, int port) throws IOException {
-        DatagramPacket packet = new DatagramPacket(data, data.length, address, port);
+        DatagramPacket packet = new DatagramPacket("ACK".getBytes(), "ACK".getBytes().length, address, clientPort);
         socket.send(packet);
     }
-
+    /*
+     * This method is used to send packets over the socket
+     */
     public void sendPacket(byte[] data, int length, int clientPort) throws IOException {
-        if (Math.random() > 0.05){
+        if (Math.random() > 0.00) {
             DatagramPacket packet = new DatagramPacket(data, length, InetAddress.getLocalHost(), clientPort);
-            lastPacketSent = packet;
             socket.send(packet);
-            System.out.println("Server: Packet " + ackCounter + " sent");
         }
         else{
-            System.out.println("Server: Packet lost");
+            System.out.println("PACKET-LOST");
         }
     }
 
@@ -102,38 +146,46 @@ public class Server {
         return receivePacket;
     }
 
+    /*
+     * this method is waiting for acks
+     */
     private void waitForAck() throws IOException {
-        socket.setSoTimeout(50);
+        Set<Integer> unacknowledgedClients = new HashSet<>(clients);
+        socket.setSoTimeout(1000); // Increased timeout for better reliability
         while (true){
-            try{
+            try {
                 byte[] ackData = new byte[packetSize];
                 DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
                 socket.receive(ackPacket);
                 String ackMessage = new String(ackPacket.getData(), 0, ackPacket.getLength());
-                if (ackMessage.split(" ")[0].equals("ACK") && Integer.parseInt(ackMessage.split(" ")[1]) == ackCounter) {
-                System.out.println("Server: Acknowledgment " + ackCounter + " received" );
-                break;
+                System.out.println("Server: " + ackMessage + " vs " + base);
+                if (ackMessage.startsWith("ACK")) {
+                    int ackSeq = Integer.parseInt(ackMessage.substring(4)); // Extract the sequence number
+                    if (base == ackSeq) {
+                        unacknowledgedClients.remove(ackPacket.getPort());
+
+                    }
+                    if (unacknowledgedClients.isEmpty()){
+                        System.out.println("SERVER RECEIVED ACK:" + ackSeq);
+                        base++;
+                        break;
+                    }
+                }
+            } catch (SocketTimeoutException e) {
+                for (int client: unacknowledgedClients){
+                    for (int i = base; i < base; i++){
+                        byte[] packet = createPacket(i);
+                        sendPacket(packet, packet.length, client);
+                        System.out.println("Resent packet " + i + " to client " + client);
+                    }
                 }
             }
-            catch (SocketTimeoutException e){
-                timeout();
-                break;
-            }
         }
     }
-    private void timeout(){
-        for (int client: clients){
-            try {
-                sendPacket(lastPacketSent.getData(), lastPacketSent.getLength(), client);
-                waitForAck();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
-    }
+
+    
     public static void main(String[] args) {
-        try{
+        try {
             Server server = new Server();
             server.start();
         } catch (Exception e) {
