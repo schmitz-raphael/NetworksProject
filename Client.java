@@ -7,10 +7,10 @@ public class Client extends Thread{
     private DatagramSocket socket;
     private InetSocketAddress serverAddress;
     private String filename;
-    private int packetsReceived = 0;
+    private int rcvBase = 0;
     private int id;
 
-    private static int packetSize = 32768;
+    private static int packetSize = 60000;
     private double probability;
 
     private byte[] lastPacketSent;
@@ -49,6 +49,7 @@ public class Client extends Thread{
         }
     }
     public void receiveFile() {
+        rcvBase = 0;
         lastPacketSent = "".getBytes();
         System.out.println("Server: Starting file download");
         double startTime = System.currentTimeMillis();
@@ -60,17 +61,26 @@ public class Client extends Thread{
                     break; // End of file transfer
                 }
                 byte[] data = receivePacket.getData();
-                System.out.println(id + ": received Packet" + packetsReceived + " ("+ ByteBuffer.wrap(data).getInt(0) + ")");
                 int packetNumber = ByteBuffer.wrap(data).getInt(0);
-                if (packetNumber == packetsReceived){
+                //if the packet-number aligns with the rcvBase then write the packet data into the file, send the ack and increment rcvBase
+                if (packetNumber == rcvBase){
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
-                    sendAck();
-                    packetsReceived++;
+                    sendAck(rcvBase++);
                 }
-                else if (ByteBuffer.wrap(data).getInt(0)< packetsReceived){
-                    packetsReceived = packetNumber;
-                    sendAck();
+                //if you receive a smaller packetNumber than your rcvBase, ie. an ack packet has been lost --> resend all acks between the packet number and the rcvBase 
+                else if (packetNumber < rcvBase){
+                    //for (int i = packetNumber; i < rcvBase; i++){
+                        sendAck(packetNumber);
+                    //}
                 }
+                /* 
+                try{
+                    Thread.sleep(5);
+                }
+                catch (InterruptedException e){
+                    Thread.currentThread().interrupt();
+                }
+                */
 
     
             }
@@ -88,27 +98,17 @@ public class Client extends Thread{
             DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
             socket.send(packet);
         }
-        else{
-            System.out.println(id + ": PACKET LOST");
-        }
     }
 
     private DatagramPacket receivePacket() throws IOException{
-        socket.setSoTimeout(2000);
-        try {
-            byte[] receiveData = new byte[packetSize];
-            DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-            socket.receive(receivePacket);
-            return receivePacket;
-        } catch (SocketTimeoutException e){
-            sendPacket(lastPacketSent);
-            return receivePacket();
-        }
+        byte[] receiveData = new byte[packetSize];
+        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+        socket.receive(receivePacket);
+        return receivePacket;
     }
 
-    private void sendAck() throws IOException {
-        String ackMessage = "ACK " + (packetsReceived);
-        System.out.println(id + "sent : "+ackMessage);
+    private void sendAck(int n) throws IOException {
+        String ackMessage = "ACK " + (n);
         sendPacket(ackMessage.getBytes());
     }
     private boolean isEndOfFilePacket(DatagramPacket packet) {
@@ -122,8 +122,8 @@ public class Client extends Thread{
     }
     public static void main(String[] args) {
         try {
-            String filename = "smallTestFile";
-            int n = 10;
+            String filename = "largeTestFile";
+            int n = 2;
             double probability = 0.00;
 
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);

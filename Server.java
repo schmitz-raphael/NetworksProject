@@ -16,9 +16,9 @@ public class Server {
 
     private int base;
     private int nextSeq;
-    private int window;
+    private int windowSize;
 
-    private static int packetSize = 32768;
+    private static int packetSize = 60000;
 
     public Server() throws SocketException {
         this.port = 6666;
@@ -40,7 +40,7 @@ public class Server {
     }
 
     private void waitForJoin() throws IOException {
-        while (clients.size() < 10) {
+        while (clients.size() < 2) {
             DatagramPacket joinPacket = receivePacket();
             String joinMessage = new String(joinPacket.getData(), 0, joinPacket.getLength());
             if (joinPacket.getLength() > 0 && joinMessage.split(" ")[0].equals("JOIN")) {
@@ -57,7 +57,7 @@ public class Server {
         double startTime = System.currentTimeMillis();
         base = 0;
         nextSeq = 0;
-        int windowSize = 10; // Choose an appropriate window size
+        windowSize = 2; // Choose an appropriate window size
         
         byte[] nextPacket = createPacket(nextSeq);
         //as long as the nextPacket is not empty ie. while there's a package to send
@@ -67,14 +67,13 @@ public class Server {
                 //loop through the client and send the packet
                 for (int clientPort : clients) {
                     sendPacket(nextPacket, nextPacket.length, clientPort);
-                    try{
+                    /*try{
                         Thread.sleep(1);
                     }
                     catch (InterruptedException e){
                         Thread.currentThread().interrupt();
-                    }
+                    }*/
                 }
-                System.out.println("PACKET_" + nextSeq + " sent");
                 //get the next packet
                 nextPacket = createPacket(++nextSeq);
                 if (nextPacket == null){
@@ -100,7 +99,6 @@ public class Server {
      */
     public byte[] createPacket(int n) throws IOException{
         try (BufferedInputStream fileInputStream = new BufferedInputStream(new FileInputStream(fileName))) {
-            System.out.println(n);
             byte[] buffer = new byte[packetSize - 4]; // Deduct 4 bytes for the base index in the packet
             int bytesRead = 0;
 
@@ -134,9 +132,6 @@ public class Server {
             DatagramPacket packet = new DatagramPacket(data, length, InetAddress.getLocalHost(), clientPort);
             socket.send(packet);
         }
-        else{
-            System.out.println("PACKET-LOST");
-        }
     }
 
     private DatagramPacket receivePacket() throws IOException {
@@ -151,37 +146,33 @@ public class Server {
      */
     private void waitForAck() throws IOException {
         Set<Integer> unacknowledgedClients = new HashSet<>(clients);
-        socket.setSoTimeout(1000); // Increased timeout for better reliability
-        while (true){
+        socket.setSoTimeout(50); // Increased timeout for better reliability
+        while (!unacknowledgedClients.isEmpty()) {
             try {
                 byte[] ackData = new byte[packetSize];
                 DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
                 socket.receive(ackPacket);
                 String ackMessage = new String(ackPacket.getData(), 0, ackPacket.getLength());
-                System.out.println("Server: " + ackMessage + " vs " + base);
+                
                 if (ackMessage.startsWith("ACK")) {
                     int ackSeq = Integer.parseInt(ackMessage.substring(4)); // Extract the sequence number
-                    if (base == ackSeq) {
+                    if (base <= ackSeq && ackSeq < base + windowSize) {
                         unacknowledgedClients.remove(ackPacket.getPort());
-
-                    }
-                    if (unacknowledgedClients.isEmpty()){
-                        System.out.println("SERVER RECEIVED ACK:" + ackSeq);
-                        base++;
-                        break;
                     }
                 }
             } catch (SocketTimeoutException e) {
-                for (int client: unacknowledgedClients){
-                    for (int i = base; i < base; i++){
+                // Handle timeout, resend unacknowledged packets
+                for (int client : unacknowledgedClients) {
+                    for (int i = base; i < nextSeq; i++) {
                         byte[] packet = createPacket(i);
                         sendPacket(packet, packet.length, client);
-                        System.out.println("Resent packet " + i + " to client " + client);
                     }
                 }
             }
         }
+        base += 1; // Move the window
     }
+    
 
     
     public static void main(String[] args) {
