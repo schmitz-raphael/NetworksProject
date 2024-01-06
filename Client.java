@@ -55,7 +55,7 @@ public class Client extends Thread{
         lastPacketSent = "".getBytes();
         System.out.println("Server: Starting file download");
         double startTime = System.currentTimeMillis();
-        try (BufferedOutputStream fileOutputStream = new BufferedOutputStream(new FileOutputStream(+id +"_received_" + filename))) {
+        try (BufferedOutputStream fileOutputStream = new BufferedOutputStream(new FileOutputStream("TestFiles/" + id + "_" + filename.split("/")[1]))) {
             while (true) {
                 DatagramPacket receivePacket = receivePacket();
                 
@@ -66,6 +66,7 @@ public class Client extends Thread{
                 int packetNumber = ByteBuffer.wrap(data).getInt(0);
                 //if the packet-number aligns with the rcvBase then write the packet data into the file, send the ack and increment rcvBase
                 if (packetNumber == rcvBase){
+                    System.out.println("CLIENT_" + id + ": RECEIVED PACKET:" +packetNumber);
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
                     sendAck(rcvBase++);
                 }
@@ -99,6 +100,7 @@ public class Client extends Thread{
 
     private void sendAck(int n) throws IOException {
         String ackMessage = "ACK " + (n);
+        System.out.println("CLIENT_" + id + ": sent: " + ackMessage);
         sendPacket(ackMessage.getBytes());
     }
     private boolean isEndOfFilePacket(DatagramPacket packet) {
@@ -112,8 +114,8 @@ public class Client extends Thread{
     }
     public static void main(String[] args) {
         try {
-            String filename = "video.avi";
-            int n = 10;
+            String filename = "TestFiles/video.avi";
+            int n = 2;
             double probability = 0.1;
 
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);

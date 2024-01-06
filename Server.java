@@ -1,20 +1,13 @@
-import java.io.BufferedInputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class Server {
     private DatagramSocket socket;
     private int port;
     private String fileName = "";
-    private ArrayList<Integer> clients = new ArrayList<>();
+    private Map<Integer, InetAddress> clients = new HashMap<>();
 
     private int base;
     private int nextSeq;
@@ -46,7 +39,8 @@ public class Server {
      */
     private void waitForJoin() throws IOException {
         //check the size of the client list
-        while (clients.size() < 10) {
+        while (clients.size() < 2) {
+            System.out.println(clients.size());
             DatagramPacket joinPacket = receivePacket();
             String joinMessage = new String(joinPacket.getData(), 0, joinPacket.getLength());
             //check if the first arg equals join
@@ -55,7 +49,7 @@ public class Server {
                 //extract fileName
                 fileName = joinMessage.split(" ")[1];
                 //add the port to the client list
-                clients.add(joinPacket.getPort());
+                clients.put(joinPacket.getPort(),joinPacket.getAddress());
                 //send ACK
                 sendAck(joinPacket.getAddress(), joinPacket.getPort());
             }
@@ -75,8 +69,10 @@ public class Server {
             //while nextSeq is smaller than the base + windowsize
             while (nextSeq < base + windowSize){
                 //loop through the client and send the packet
-                for (int clientPort : clients) {
-                    sendPacket(nextPacket, nextPacket.length, clientPort);
+                for (HashMap.Entry<Integer,InetAddress> client: clients.entrySet()) {
+                    System.out.println("SERVER --> " + client.getKey().toString() + " sent packet:" + nextSeq);
+                    sendPacket(nextPacket, nextPacket.length, client.getValue(), client.getKey());
+                    
                 }
                 //get the next packet
                 nextPacket = createPacket(++nextSeq);
@@ -88,9 +84,9 @@ public class Server {
             waitForAck();
         }
         // Signal end of file transfer by sending a package to all clients
-        for (int client : clients) {
+        for (HashMap.Entry<Integer,InetAddress> client: clients.entrySet()) {
             byte[] endOfFileMessage = "END_OF_FILE".getBytes();
-            DatagramPacket endOfFilePacket = new DatagramPacket(endOfFileMessage, endOfFileMessage.length, InetAddress.getLocalHost(), client);
+            DatagramPacket endOfFilePacket = new DatagramPacket(endOfFileMessage, endOfFileMessage.length, client.getValue(), client.getKey());
             socket.send(endOfFilePacket);
         }
         //print final statement + statistics
@@ -131,9 +127,9 @@ public class Server {
     /*
      * This method is used to send packets over the socket
      */
-    public void sendPacket(byte[] data, int length, int clientPort) throws IOException {
+    public void sendPacket(byte[] data, int length, InetAddress clientAddress, int clientPort) throws IOException {
         if (Math.random() > 0.1) {
-            DatagramPacket packet = new DatagramPacket(data, length, InetAddress.getLocalHost(), clientPort);
+            DatagramPacket packet = new DatagramPacket(data, length, clientAddress, clientPort);
             socket.send(packet);
         }
     }
@@ -149,8 +145,8 @@ public class Server {
      * this method is waiting for acks
      */
     private void waitForAck() throws IOException {
-        Set<Integer> unacknowledgedClients = new HashSet<>(clients);
-        socket.setSoTimeout(5); // Increased timeout for better reliability
+        HashMap<Integer,InetAddress> unacknowledgedClients = new HashMap<>(clients);
+        socket.setSoTimeout(50); // Increased timeout for better reliability
         while (!unacknowledgedClients.isEmpty()) {
             try {
                 byte[] ackData = new byte[packetSize];
@@ -167,9 +163,13 @@ public class Server {
                 //in case of a socket timeout
             } catch (SocketTimeoutException e) {
                 // send the base package to all clients that are still unacknowledged
-                for (int client : unacknowledgedClients) {
-                        byte[] packet = createPacket(base);
-                        sendPacket(packet, packet.length, client);
+                for (HashMap.Entry<Integer,InetAddress> client: unacknowledgedClients.entrySet()) {
+                        //for (int i = base; i < nextSeq; i++){
+                            byte[] packet = createPacket(base);
+                            sendPacket(packet, packet.length, client.getValue(), client.getKey());
+                            System.out.println("SERVER --> " + client.getValue() + ":" + client.getKey() + "RESENT packet:" + base);
+                        //}
+                        
                 }
             }
         }
