@@ -10,7 +10,7 @@ public class Client extends Thread{
     private int rcvBase = 0;
     private int id;
 
-    private static int packetSize = 60000;
+    private static int packetSize = 65507;
     private double probability;
 
     private byte[] lastPacketSent;
@@ -27,7 +27,9 @@ public class Client extends Thread{
     public void requestJoin() {
         try {
             // Send join request to the server
-            sendPacket(("JOIN " + filename).getBytes());
+            byte[] data = ("JOIN " + filename).getBytes();
+            DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
+            socket.send(packet);
             waitForAck();
             System.out.println(id+":Joined server: " + serverAddress);
         } catch (IOException e) {
@@ -67,22 +69,10 @@ public class Client extends Thread{
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
                     sendAck(rcvBase++);
                 }
-                //if you receive a smaller packetNumber than your rcvBase, ie. an ack packet has been lost --> resend all acks between the packet number and the rcvBase 
+                //if you receive a smaller packetNumber than your rcvBase ie. an ack packet has been lost --> resend all acks between the packet number and the rcvBase 
                 else if (packetNumber < rcvBase){
-                    //for (int i = packetNumber; i < rcvBase; i++){
                         sendAck(packetNumber);
-                    //}
                 }
-                /* 
-                try{
-                    Thread.sleep(5);
-                }
-                catch (InterruptedException e){
-                    Thread.currentThread().interrupt();
-                }
-                */
-
-    
             }
             fileOutputStream.close();
             System.out.println("Client"+id+": File transfer complete.");
@@ -122,9 +112,9 @@ public class Client extends Thread{
     }
     public static void main(String[] args) {
         try {
-            String filename = "largeTestFile";
-            int n = 2;
-            double probability = 0.00;
+            String filename = "video.avi";
+            int n = 10;
+            double probability = 0.1;
 
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
 

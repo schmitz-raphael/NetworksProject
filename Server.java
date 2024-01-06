@@ -1,9 +1,11 @@
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -18,7 +20,7 @@ public class Server {
     private int nextSeq;
     private int windowSize;
 
-    private static int packetSize = 60000;
+    private static int packetSize = 65507;
 
     public Server() throws SocketException {
         this.port = 6666;
@@ -39,14 +41,22 @@ public class Server {
         }
     }
 
+    /*
+     * this method is used to fill up the client list
+     */
     private void waitForJoin() throws IOException {
-        while (clients.size() < 2) {
+        //check the size of the client list
+        while (clients.size() < 10) {
             DatagramPacket joinPacket = receivePacket();
             String joinMessage = new String(joinPacket.getData(), 0, joinPacket.getLength());
-            if (joinPacket.getLength() > 0 && joinMessage.split(" ")[0].equals("JOIN")) {
+            //check if the first arg equals join
+            if (joinMessage.split(" ")[0].equals("JOIN")) {
                 System.out.println("Server: Client joined: " + joinPacket.getAddress() + ":" + joinPacket.getPort());
+                //extract fileName
                 fileName = joinMessage.split(" ")[1];
+                //add the port to the client list
                 clients.add(joinPacket.getPort());
+                //send ACK
                 sendAck(joinPacket.getAddress(), joinPacket.getPort());
             }
         }
@@ -57,7 +67,7 @@ public class Server {
         double startTime = System.currentTimeMillis();
         base = 0;
         nextSeq = 0;
-        windowSize = 2; // Choose an appropriate window size
+        windowSize = 4;
         
         byte[] nextPacket = createPacket(nextSeq);
         //as long as the nextPacket is not empty ie. while there's a package to send
@@ -67,12 +77,6 @@ public class Server {
                 //loop through the client and send the packet
                 for (int clientPort : clients) {
                     sendPacket(nextPacket, nextPacket.length, clientPort);
-                    /*try{
-                        Thread.sleep(1);
-                    }
-                    catch (InterruptedException e){
-                        Thread.currentThread().interrupt();
-                    }*/
                 }
                 //get the next packet
                 nextPacket = createPacket(++nextSeq);
@@ -82,14 +86,14 @@ public class Server {
             }
             //get the acknowledgements from every client
             waitForAck();
-            //iterate base after receiving all acks
         }
-        // Signal end of file transfer
+        // Signal end of file transfer by sending a package to all clients
         for (int client : clients) {
             byte[] endOfFileMessage = "END_OF_FILE".getBytes();
             DatagramPacket endOfFilePacket = new DatagramPacket(endOfFileMessage, endOfFileMessage.length, InetAddress.getLocalHost(), client);
             socket.send(endOfFilePacket);
         }
+        //print final statement + statistics
         System.out.println("Server: File transfer complete.");
         System.out.println("Elapsed time: " + (System.currentTimeMillis() - startTime) / 1000 + "s");
     }
@@ -97,26 +101,26 @@ public class Server {
     /*
      * This method is used to get the package of certain number n
      */
-    public byte[] createPacket(int n) throws IOException{
-        try (BufferedInputStream fileInputStream = new BufferedInputStream(new FileInputStream(fileName))) {
+    public byte[] createPacket(int n) throws IOException {
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(fileName, "r")) {
             byte[] buffer = new byte[packetSize - 4]; // Deduct 4 bytes for the base index in the packet
-            int bytesRead = 0;
-
     
-            for (int i = 0; i < n; i++){
-                bytesRead= fileInputStream.read(buffer);
-            }
-
-            bytesRead= fileInputStream.read(buffer);
-            if (bytesRead == -1) return null;
-            else{
-                byte[] packet = new byte[bytesRead+4];
+            long position = (long) n * (packetSize - 4);
+            randomAccessFile.seek(position);
+    
+            int bytesRead = randomAccessFile.read(buffer);
+    
+            if (bytesRead == -1) {
+                return null;
+            } else {
+                byte[] packet = new byte[bytesRead + 4];
                 ByteBuffer.wrap(packet).putInt(0, n);
                 System.arraycopy(buffer, 0, packet, 4, bytesRead);
                 return packet;
             }
         }
-    } 
+    }
+    
     /*
      * This method is used to send Acks
      */
@@ -128,7 +132,7 @@ public class Server {
      * This method is used to send packets over the socket
      */
     public void sendPacket(byte[] data, int length, int clientPort) throws IOException {
-        if (Math.random() > 0.00) {
+        if (Math.random() > 0.1) {
             DatagramPacket packet = new DatagramPacket(data, length, InetAddress.getLocalHost(), clientPort);
             socket.send(packet);
         }
@@ -146,7 +150,7 @@ public class Server {
      */
     private void waitForAck() throws IOException {
         Set<Integer> unacknowledgedClients = new HashSet<>(clients);
-        socket.setSoTimeout(50); // Increased timeout for better reliability
+        socket.setSoTimeout(5); // Increased timeout for better reliability
         while (!unacknowledgedClients.isEmpty()) {
             try {
                 byte[] ackData = new byte[packetSize];
@@ -160,17 +164,17 @@ public class Server {
                         unacknowledgedClients.remove(ackPacket.getPort());
                     }
                 }
+                //in case of a socket timeout
             } catch (SocketTimeoutException e) {
-                // Handle timeout, resend unacknowledged packets
+                // send the base package to all clients that are still unacknowledged
                 for (int client : unacknowledgedClients) {
-                    for (int i = base; i < nextSeq; i++) {
-                        byte[] packet = createPacket(i);
+                        byte[] packet = createPacket(base);
                         sendPacket(packet, packet.length, client);
-                    }
                 }
             }
         }
-        base += 1; // Move the window
+        //once all clients received the base package, increment
+        base += 1;
     }
     
 
