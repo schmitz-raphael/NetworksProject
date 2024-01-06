@@ -65,14 +65,14 @@ public class Client extends Thread{
                 byte[] data = receivePacket.getData();
                 int packetNumber = ByteBuffer.wrap(data).getInt(0);
                 //if the packet-number aligns with the rcvBase then write the packet data into the file, send the ack and increment rcvBase
+                System.out.println("CLIENT_" + id + ": RECEIVED PACKET:" +packetNumber);
                 if (packetNumber == rcvBase){
-                    System.out.println("CLIENT_" + id + ": RECEIVED PACKET:" +packetNumber);
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
                     sendAck(rcvBase++);
                 }
                 //if you receive a smaller packetNumber than your rcvBase ie. an ack packet has been lost --> resend all acks between the packet number and the rcvBase 
                 else if (packetNumber < rcvBase){
-                        sendAck(packetNumber);
+                    sendAck(packetNumber);
                 }
             }
             fileOutputStream.close();
@@ -114,9 +114,9 @@ public class Client extends Thread{
     }
     public static void main(String[] args) {
         try {
-            String filename = "TestFiles/video.avi";
-            int n = 2;
-            double probability = 0.1;
+            String filename = "TestFiles/smallTestFile";
+            int n = 10;
+            double probability = 0.10;
 
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
 
