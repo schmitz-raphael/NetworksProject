@@ -15,11 +15,10 @@ public class Client extends Thread{
     private int totalProcesses;
     private double probability;
     private int window;
-    private String protocol;
+    private int timeout;
 
-    private byte[] lastPacketSent;
 
-    public Client(InetSocketAddress serverAddress, String filename, int id, int totalProcesses, double probability, int window) throws SocketException {
+    public Client(InetSocketAddress serverAddress, String filename, int id, int totalProcesses, double probability, int window, int timeout) throws SocketException {
         this.socket = new DatagramSocket();
         this.serverAddress = serverAddress;
         this.filename = filename;
@@ -27,13 +26,14 @@ public class Client extends Thread{
         this.totalProcesses = totalProcesses;
         this.probability = probability;
         this.window = window;
+        this.timeout = timeout;
         
     }
 
     public void requestJoin() {
         try {
             // Send join request to the server
-            byte[] data = ("JOIN " + filename + " " + totalProcesses + " " + probability + " " + window).getBytes();
+            byte[] data = ("JOIN " + filename + " " + totalProcesses + " " + probability + " " + window + " " + timeout).getBytes();
             DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
             socket.send(packet);
             waitForAck();
@@ -58,7 +58,6 @@ public class Client extends Thread{
     }
     public void receiveFile() {
         rcvBase = 0;
-        lastPacketSent = "".getBytes();
         System.out.println("Server: Starting file download");
         double startTime = System.currentTimeMillis();
         try (BufferedOutputStream fileOutputStream = new BufferedOutputStream(new FileOutputStream("TestFiles/" + id + "_" + filename.split("/")[1]))) {
@@ -90,7 +89,6 @@ public class Client extends Thread{
     }
 
     private void sendPacket(byte[] data) throws IOException {
-        lastPacketSent = data;
         if (Math.random() > probability){
             DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
             socket.send(packet);
@@ -124,13 +122,14 @@ public class Client extends Thread{
             int n = Integer.parseInt(args[1]);
             double probability = Double.parseDouble(args[2]);
             int windowSize = Integer.parseInt(args[3]);
+            int timeout = Integer.parseInt(args[4]);
 
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
 
             Client[] clients = new Client[n];
 
             for (int i = 0; i < n; i++){
-                clients[i] = new Client(serverAddress, filename, i, n,probability, windowSize);
+                clients[i] = new Client(serverAddress, filename, i, n,probability, windowSize, timeout);
                 clients[i].start();
             }
             for (Client client : clients){

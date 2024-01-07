@@ -13,7 +13,7 @@ public class Server {
     private String fileName = "";
     private Map<Integer, InetAddress> clients = new HashMap<>();
     private int clientSize = Integer.MAX_VALUE;
-
+    private int timeout;
     //attributes necessary for the go back n protocol
     private int base;
     private int nextSeq;
@@ -64,6 +64,8 @@ public class Server {
                 probability = Double.parseDouble(joinMessage.split(" ")[3]);
                 //extract the window size
                 windowSize = Integer.parseInt(joinMessage.split(" ")[4]);
+                //extract timeout
+                timeout = Integer.parseInt(joinMessage.split(" ")[5]);
                 //add the port to the client list
                 clients.put(joinPacket.getPort(),joinPacket.getAddress());
                 //send ACK
@@ -166,7 +168,7 @@ public class Server {
      */
     private void waitForAck() throws IOException {
         HashMap<Integer,InetAddress> unacknowledgedClients = new HashMap<>(clients);
-        socket.setSoTimeout(10); 
+        socket.setSoTimeout(timeout); 
         while (!unacknowledgedClients.isEmpty()) {
             try {
                 DatagramPacket ackPacket = receivePacket();
