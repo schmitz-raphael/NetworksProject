@@ -116,7 +116,7 @@ public class Client extends Thread{
         try {
             String filename = "TestFiles/smallTestFile";
             int n = 10;
-            double probability = 0.10;
+            double probability = 0.50;
 
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
 

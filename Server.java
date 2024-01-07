@@ -80,8 +80,8 @@ public class Server {
                 for (HashMap.Entry<Integer,InetAddress> client: clients.entrySet()) {
                     System.out.println("SERVER --> " + client.getValue() + ":" + client.getKey() +" sent packet:" + nextSeq);
                     sendPacket(nextPacket, nextPacket.length, client.getValue(), client.getKey());
+                    packetsSent++;
                 }
-                packetsSent++;
                 //get the next packet
                 nextPacket = createPacket(++nextSeq);
                 if (nextPacket == null){
@@ -140,7 +140,7 @@ public class Server {
      * This method is used to send packets over the socket
      */
     public void sendPacket(byte[] data, int length, InetAddress clientAddress, int clientPort) throws IOException {
-        if (Math.random() > 0.00) {
+        if (Math.random() > 0.50) {
             DatagramPacket packet = new DatagramPacket(data, length, clientAddress, clientPort);
             socket.send(packet);
         }
@@ -158,7 +158,7 @@ public class Server {
      */
     private void waitForAck() throws IOException {
         HashMap<Integer,InetAddress> unacknowledgedClients = new HashMap<>(clients);
-        socket.setSoTimeout(1); 
+        socket.setSoTimeout(10); 
         while (!unacknowledgedClients.isEmpty()) {
             try {
                 DatagramPacket ackPacket = receivePacket();
@@ -174,13 +174,15 @@ public class Server {
             } catch (SocketTimeoutException e) {
                 // send the base package to all clients that are still unacknowledged
                 for (HashMap.Entry<Integer,InetAddress> client: unacknowledgedClients.entrySet()) {
-                    //for (int i = base; i < nextSeq; i++){
-                        byte[] packet = createPacket(base);
+                    for (int i = base; i < nextSeq; i++){
+                        byte[] packet = createPacket(i);
                         sendPacket(packet, packet.length, client.getValue(), client.getKey());
-                        System.out.println("SERVER --> " + client.getValue() + ":" + client.getKey() + " RESENT packet:" + base);
-                    //}    
+                        System.out.println("SERVER --> " + client.getValue() + ":" + client.getKey() + " RESENT packet:" + i);
+                        packetsResent++;
+                        packetsSent++;
+                    }    
                 }
-                packetsResent++;
+                
             }
         }
         //once all clients received the base package, increment the base
