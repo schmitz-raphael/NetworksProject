@@ -11,23 +11,29 @@ public class Client extends Thread{
     private int id;
 
     private static int packetSize = 65507;
+
+    private int totalProcesses;
     private double probability;
+    private int window;
+    private String protocol;
 
     private byte[] lastPacketSent;
 
-    public Client(InetSocketAddress serverAddress, String filename, int id, double probability) throws SocketException {
+    public Client(InetSocketAddress serverAddress, String filename, int id, int totalProcesses, double probability, int window) throws SocketException {
         this.socket = new DatagramSocket();
         this.serverAddress = serverAddress;
         this.filename = filename;
         this.id = id;
+        this.totalProcesses = totalProcesses;
         this.probability = probability;
+        this.window = window;
         
     }
 
     public void requestJoin() {
         try {
             // Send join request to the server
-            byte[] data = ("JOIN " + filename).getBytes();
+            byte[] data = ("JOIN " + filename + " " + totalProcesses + " " + probability + " " + window).getBytes();
             DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
             socket.send(packet);
             waitForAck();
@@ -114,16 +120,17 @@ public class Client extends Thread{
     }
     public static void main(String[] args) {
         try {
-            String filename = "TestFiles/smallTestFile";
-            int n = 10;
-            double probability = 0.50;
+            String filename = args[0];
+            int n = Integer.parseInt(args[1]);
+            double probability = Double.parseDouble(args[2]);
+            int windowSize = Integer.parseInt(args[3]);
 
             InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
 
             Client[] clients = new Client[n];
 
             for (int i = 0; i < n; i++){
-                clients[i] = new Client(serverAddress, filename, i, probability);
+                clients[i] = new Client(serverAddress, filename, i, n,probability, windowSize);
                 clients[i].start();
             }
             for (Client client : clients){

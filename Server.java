@@ -12,11 +12,13 @@ public class Server {
     //attributes in correlation to the sending of the file
     private String fileName = "";
     private Map<Integer, InetAddress> clients = new HashMap<>();
+    private int clientSize = Integer.MAX_VALUE;
 
     //attributes necessary for the go back n protocol
     private int base;
     private int nextSeq;
     private int windowSize;
+    private Double probability;
     private static int packetSize = 65507;
 
     //attributes used for statistics
@@ -48,7 +50,7 @@ public class Server {
      */
     private void waitForJoin() throws IOException {
         //check the size of the client list
-        while (clients.size() < 10) {
+        while (clients.size() < clientSize) {
             System.out.println(clients.size());
             DatagramPacket joinPacket = receivePacket();
             String joinMessage = new String(joinPacket.getData(), 0, joinPacket.getLength());
@@ -57,6 +59,12 @@ public class Server {
                 System.out.println("Server: Client joined: " + joinPacket.getAddress() + ":" + joinPacket.getPort());
                 //extract fileName
                 fileName = joinMessage.split(" ")[1];
+                //extract processes number
+                clientSize = Integer.parseInt(joinMessage.split(" ")[2]);
+                //extract probability
+                probability = Double.parseDouble(joinMessage.split(" ")[3]);
+                //extract the window size
+                windowSize = Integer.parseInt(joinMessage.split(" ")[4]);
                 //add the port to the client list
                 clients.put(joinPacket.getPort(),joinPacket.getAddress());
                 //send ACK
@@ -69,8 +77,7 @@ public class Server {
         System.out.println("Server: Starting file upload");
         double startTime = System.currentTimeMillis();
         base = 0;
-        windowSize = 4;
-        
+        nextSeq = 0;
         byte[] nextPacket = createPacket(nextSeq);
         //as long as the nextPacket is not empty ie. while there's a package to send
         while (nextPacket != null){
@@ -104,6 +111,8 @@ public class Server {
         System.out.println("Elapsed time: " + (System.currentTimeMillis() - startTime) / 1000 + "s");
         System.out.println("TOTAL AMOUNTS OF PACKETS SENT: " + packetsSent);
         System.out.println("TOTAL AMOUNT OF PACKETS RESENT: " + packetsResent);
+        long kbSent = packetSize / 1000 * base * clientSize;
+        System.out.printf("UPLOAD SPEED: " + kbSent / (long)((System.currentTimeMillis() - startTime)) + " MB/s");
     }
     
     /*
@@ -140,7 +149,7 @@ public class Server {
      * This method is used to send packets over the socket
      */
     public void sendPacket(byte[] data, int length, InetAddress clientAddress, int clientPort) throws IOException {
-        if (Math.random() > 0.50) {
+        if (Math.random() > probability) {
             DatagramPacket packet = new DatagramPacket(data, length, clientAddress, clientPort);
             socket.send(packet);
         }
