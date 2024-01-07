@@ -51,7 +51,6 @@ public class Server {
     private void waitForJoin() throws IOException {
         //check the size of the client list
         while (clients.size() < clientSize) {
-            System.out.println(clients.size());
             DatagramPacket joinPacket = receivePacket();
             String joinMessage = new String(joinPacket.getData(), 0, joinPacket.getLength());
             //check if the first arg equals join
@@ -112,7 +111,7 @@ public class Server {
         System.out.println("TOTAL AMOUNTS OF PACKETS SENT: " + packetsSent);
         System.out.println("TOTAL AMOUNT OF PACKETS RESENT: " + packetsResent);
         long kbSent = packetSize / 1000 * base * clientSize;
-        System.out.printf("UPLOAD SPEED: " + kbSent / (long)((System.currentTimeMillis() - startTime)) + " MB/s");
+        System.out.printf("UPLOAD SPEED: " + kbSent /((System.currentTimeMillis() - startTime)) + " MB/s");
     }
     
     /*
