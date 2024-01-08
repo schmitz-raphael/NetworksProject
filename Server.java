@@ -26,11 +26,13 @@ public class Server {
     private int packetsSent = 0;
     private int packetsResent = 0;
 
+    //put the port at 6666 and create a socket
     public Server() throws SocketException {
-        this.port = 6666;
+        this.port = 12345;
         this.socket = new DatagramSocket(port);
     }
 
+    //method to start the server
     public void start() {
         try {
             System.out.println("Server: Server started on port " + port);
@@ -74,6 +76,9 @@ public class Server {
         }
     }
 
+    /*
+     * this method handles everything when it comes to the file transfer
+     */
     public void sendFile() throws IOException {
         System.out.println("Server: Starting file upload");
         double startTime = System.currentTimeMillis();
@@ -155,7 +160,7 @@ public class Server {
             socket.send(packet);
         }
     }
-
+    //wrapper function to receive packets
     private DatagramPacket receivePacket() throws IOException {
         byte[] receiveData = new byte[packetSize];
         DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
@@ -164,9 +169,10 @@ public class Server {
     }
 
     /*
-     * this method is waiting for acks
+     * this method waits to receive all acks for the base and handles the timeout
      */
     private void waitForAck() throws IOException {
+        //copy the map with all the clients to keep an eye on which client is not yet acknowledged
         HashMap<Integer,InetAddress> unacknowledgedClients = new HashMap<>(clients);
         socket.setSoTimeout(timeout); 
         while (!unacknowledgedClients.isEmpty()) {
@@ -174,15 +180,18 @@ public class Server {
                 DatagramPacket ackPacket = receivePacket();
                 String ackMessage = new String(ackPacket.getData(), 0, ackPacket.getLength());
                 
+                //make sure that it's a proper ACK packet
                 if (ackMessage.startsWith("ACK")) {
+                    //retrieve the ack sequence
                     int ackSeq = Integer.parseInt(ackMessage.substring(4));
+                    //if if the ack sequence is in the window, remove the client
                     if (base <= ackSeq && ackSeq < base + windowSize) {
                         unacknowledgedClients.remove(ackPacket.getPort());
                     }
                 }
                 //in case of a socket timeout
             } catch (SocketTimeoutException e) {
-                // send the base package to all clients that are still unacknowledged
+                // send the entire window to all unacknowledged clients
                 for (HashMap.Entry<Integer,InetAddress> client: unacknowledgedClients.entrySet()) {
                     for (int i = base; i < nextSeq; i++){
                         byte[] packet = createPacket(i);

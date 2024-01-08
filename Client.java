@@ -1,4 +1,5 @@
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
@@ -60,19 +61,35 @@ public class Client extends Thread{
         rcvBase = 0;
         System.out.println("Server: Starting file download");
         double startTime = System.currentTimeMillis();
-        try (BufferedOutputStream fileOutputStream = new BufferedOutputStream(new FileOutputStream("TestFiles/" + id + "_" + filename.split("/")[1]))) {
+         
+        //check if a directory for the user already exists and create a new one if that's the case
+        File directory = new File(id+"/");
+        if (!directory.exists()) {
+            if (directory.mkdirs()) {
+                System.out.println("Server: Directory " + id + " created.");
+            } 
+        }
+        //create a bufferedoutput stream to read the packets into a new file
+        try (BufferedOutputStream fileOutputStream = new BufferedOutputStream(new FileOutputStream(id + "/" + filename.split("/")[1]))) {
             while (true) {
+                //receive packet
                 DatagramPacket receivePacket = receivePacket();
                 
+                //check if the packet declares the end of file and break out of the loop if that's the case
                 if (receivePacket.getLength() == 0 || isEndOfFilePacket(receivePacket)) {
-                    break; // End of file transfer
+                    break;
                 }
+
+                //retrieve the data and the packet number
                 byte[] data = receivePacket.getData();
                 int packetNumber = ByteBuffer.wrap(data).getInt(0);
-                //if the packet-number aligns with the rcvBase then write the packet data into the file, send the ack and increment rcvBase
                 System.out.println("CLIENT_" + id + ": RECEIVED PACKET:" +packetNumber);
+
+                //if the packet-number aligns with the rcvBase then write the packet data into the file, send the ack and increment rcvBase
                 if (packetNumber == rcvBase){
+                    //write the body of the data into the file
                     fileOutputStream.write(data, 4, receivePacket.getLength()-4);
+                    //send an ACK and increase the base
                     sendAck(rcvBase++);
                 }
                 //if you receive a smaller packetNumber than your rcvBase ie. an ack packet has been lost --> resend all acks between the packet number and the rcvBase 
@@ -87,30 +104,32 @@ public class Client extends Thread{
             e.printStackTrace();
         }
     }
-
+    //wrapper function to send packets
     private void sendPacket(byte[] data) throws IOException {
         if (Math.random() > probability){
             DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress.getAddress(), serverAddress.getPort());
             socket.send(packet);
         }
     }
-
+    //wrapper function to receive packets
     private DatagramPacket receivePacket() throws IOException{
         byte[] receiveData = new byte[packetSize];
         DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
         socket.receive(receivePacket);
         return receivePacket;
     }
-
+    //wrapper function to send acks
     private void sendAck(int n) throws IOException {
         String ackMessage = "ACK " + (n);
         System.out.println("CLIENT_" + id + ": sent: " + ackMessage);
         sendPacket(ackMessage.getBytes());
     }
+    //function to check for EOF
     private boolean isEndOfFilePacket(DatagramPacket packet) {
         String packetData = new String(packet.getData(), 0, packet.getLength()).trim();
         return packetData.equals("END_OF_FILE");
     }
+    //run method for the multi-threading
     @Override
     public void run(){
         requestJoin();
@@ -124,7 +143,7 @@ public class Client extends Thread{
             int windowSize = Integer.parseInt(args[3]);
             int timeout = Integer.parseInt(args[4]);
 
-            InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
+            InetSocketAddress serverAddress = new InetSocketAddress("localhost", 12345);
 
             Client[] clients = new Client[n];
 
