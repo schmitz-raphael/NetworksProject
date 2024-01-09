@@ -83,12 +83,20 @@ public class Client extends Thread{
                 //retrieve the data and the packet number
                 byte[] data = receivePacket.getData();
                 int packetNumber = ByteBuffer.wrap(data).getInt(0);
+
+                int checksum = ByteBuffer.wrap(data).getInt(4);
+
+                if (checksum != checkSum(receivePacket)){
+                    System.out.println(checksum);
+                    System.err.println("Checksum failed! Stopping file download ");
+                    break;
+                }
                 System.out.println("CLIENT_" + id + ": RECEIVED PACKET:" +packetNumber);
 
                 //if the packet-number aligns with the rcvBase then write the packet data into the file, send the ack and increment rcvBase
                 if (packetNumber == rcvBase){
                     //write the body of the data into the file
-                    fileOutputStream.write(data, 4, receivePacket.getLength()-4);
+                    fileOutputStream.write(data, 8, receivePacket.getLength()-8);
                     //send an ACK and increase the base
                     sendAck(rcvBase++);
                 }
@@ -129,6 +137,10 @@ public class Client extends Thread{
         String packetData = new String(packet.getData(), 0, packet.getLength()).trim();
         return packetData.equals("END_OF_FILE");
     }
+    //method to calculate checksum
+    public int checkSum(DatagramPacket packet){
+        return packet.getLength()-8;
+    }
     //run method for the multi-threading
     @Override
     public void run(){
@@ -143,7 +155,7 @@ public class Client extends Thread{
             int windowSize = Integer.parseInt(args[3]);
             int timeout = Integer.parseInt(args[4]);
 
-            InetSocketAddress serverAddress = new InetSocketAddress("localhost", 12345);
+            InetSocketAddress serverAddress = new InetSocketAddress("localhost", 6666);
 
             Client[] clients = new Client[n];
 

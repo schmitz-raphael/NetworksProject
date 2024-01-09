@@ -28,7 +28,7 @@ public class Server {
 
     //put the port at 6666 and create a socket
     public Server() throws SocketException {
-        this.port = 12345;
+        this.port = 6666;
         this.socket = new DatagramSocket(port);
     }
 
@@ -126,9 +126,9 @@ public class Server {
      */
     public byte[] createPacket(int n) throws IOException {
         try (RandomAccessFile randomAccessFile = new RandomAccessFile(fileName, "r")) {
-            byte[] buffer = new byte[packetSize - 4]; // Deduct 4 bytes for the base index in the packet
+            byte[] buffer = new byte[packetSize - 8]; // Deduct 4 bytes for the base index in the packet
     
-            long position = (long) n * (packetSize - 4);
+            long position = (long) n * (packetSize - 8);
             randomAccessFile.seek(position);
     
             int bytesRead = randomAccessFile.read(buffer);
@@ -136,14 +136,14 @@ public class Server {
             if (bytesRead == -1) {
                 return null;
             } else {
-                byte[] packet = new byte[bytesRead + 4];
+                byte[] packet = new byte[bytesRead + 8];
                 ByteBuffer.wrap(packet).putInt(0, n);
-                System.arraycopy(buffer, 0, packet, 4, bytesRead);
+                ByteBuffer.wrap(packet).putInt(4,bytesRead);
+                System.arraycopy(buffer, 0, packet, 8, bytesRead);
                 return packet;
             }
         }
     }
-    
     /*
      * This method is used to send Acks
      */
